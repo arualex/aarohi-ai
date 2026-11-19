@@ -1,0 +1,75 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aarohi AI</title>
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;background:#11101a;color:white;
+ font-family:Arial,sans-serif;
+ min-height:100vh;
+ display:flex;align-items:center;
+ justify-content:center;padding:20px
+}
+.app{
+ width:100%;max-width:440px;
+ background:#1c1a29;border-radius:25px;
+ padding:25px;text-align:center;
+ border:1px solid #39334c
+}
+.logo{
+ width:75px;height:75px;border-radius:50%;
+ margin:15px auto;
+ display:grid;place-items:center;
+ font-size:35px;
+ background:linear-gradient(135deg,#d8a5ff,#8d65e8)
+}
+h1{font-size:30px;margin:12px 0}
+p{color:#b9b4c9;line-height:1.6}
+.status{color:#a8e6bd;font-size:13px}
+.chat{
+ margin-top:30px;background:#292638;
+ padding:18px;border-radius:15px;text-align:left
+}
+input{
+ width:100%;padding:15px;border:0;
+ border-radius:12px;margin-top:15px;
+ background:#393448;color:white;
+ font-size:15px
+}
+button{
+ width:100%;padding:15px;margin-top:12px;
+ border:0;border-radius:12px;
+ background:#b58aff;color:#171020;
+ font-size:16px;font-weight:bold
+}
+</style>
+</head>
+<body>
+<div class="app">
+ <div class="logo">✦</div>
+ <h1>Aarohi AI</h1>
+ <div class="status">● Your AI companion</div>
+ <p>Meet Aarohi. Your friendly AI companion is here to chat with you.</p>
+ <div class="chat">
+  <strong>Aarohi ✨</strong>
+  <p>Hey! I'm Aarohi. How are you today?</p>
+  <input id="message" placeholder="Write your message...">
+  <button onclick="sendMessage()">Send Message</button>
+  <p id="reply"></p>
+ </div>
+</div>
+<script>
+function sendMessage(){
+ const msg=document.getElementById("message").value.trim();
+ if(!msg)return;
+ document.getElementById("reply").innerText=
+ "Your message: "+msg+" (AI connection coming soon!)";
+ document.getElementById("message").value="";
+}
+</script>
+</body>
+</html>
