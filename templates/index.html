@@ -1,74 +1,122 @@
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="hi">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Aarohi AI</title>
 <style>
 *{box-sizing:border-box}
-body{
- margin:0;background:#11101a;color:white;
- font-family:Arial,sans-serif;
- min-height:100vh;
- display:flex;align-items:center;
- justify-content:center;padding:20px
-}
-.app{
- width:100%;max-width:440px;
- background:#1c1a29;border-radius:25px;
- padding:25px;text-align:center;
- border:1px solid #39334c
-}
-.logo{
- width:75px;height:75px;border-radius:50%;
- margin:15px auto;
- display:grid;place-items:center;
- font-size:35px;
- background:linear-gradient(135deg,#d8a5ff,#8d65e8)
-}
-h1{font-size:30px;margin:12px 0}
-p{color:#b9b4c9;line-height:1.6}
-.status{color:#a8e6bd;font-size:13px}
-.chat{
- margin-top:30px;background:#292638;
- padding:18px;border-radius:15px;text-align:left
-}
-input{
- width:100%;padding:15px;border:0;
- border-radius:12px;margin-top:15px;
- background:#393448;color:white;
- font-size:15px
-}
-button{
- width:100%;padding:15px;margin-top:12px;
- border:0;border-radius:12px;
- background:#b58aff;color:#171020;
- font-size:16px;font-weight:bold
-}
+body{margin:0;background:#11101a;color:white;font-family:Arial,sans-serif;min-height:100vh;display:flex;justify-content:center;align-items:center;padding:15px}
+.app{width:100%;max-width:460px;background:#1c1a29;border:1px solid #39334c;border-radius:22px;padding:22px}
+.logo{font-size:34px;color:#d8a5ff;text-align:center}
+h1{text-align:center;margin:8px}
+.sub{text-align:center;color:#aaa;font-size:13px}
+input{width:100%;padding:14px;margin-top:12px;border:1px solid #494256;border-radius:10px;background:#292638;color:white;font-size:15px}
+button{width:100%;padding:14px;margin-top:12px;border:0;border-radius:10px;background:#b58aff;color:#171020;font-weight:bold;font-size:16px}
+.secondary{background:#393448;color:white}
+.hidden{display:none}
+#messages{height:350px;overflow-y:auto;background:#15131e;border-radius:12px;padding:12px;margin-top:15px}
+.msg{padding:11px;margin:9px 0;border-radius:12px;line-height:1.5;white-space:pre-wrap}
+.user{background:#51416c;text-align:right}
+.ai{background:#292638}
+#status{text-align:center;color:#b9b4c9;font-size:13px;margin-top:12px}
 </style>
 </head>
 <body>
 <div class="app">
- <div class="logo">✦</div>
- <h1>Aarohi AI</h1>
- <div class="status">● Your AI companion</div>
- <p>Meet Aarohi. Your friendly AI companion is here to chat with you.</p>
- <div class="chat">
-  <strong>Aarohi ✨</strong>
-  <p>Hey! I'm Aarohi. How are you today?</p>
-  <input id="message" placeholder="Write your message...">
-  <button onclick="sendMessage()">Send Message</button>
-  <p id="reply"></p>
- </div>
+<div class="logo">✦</div>
+<h1>Aarohi AI</h1>
+<p class="sub">Your friendly AI companion ❤️</p>
+
+<div id="auth">
+<h3 id="authTitle">Create your account</h3>
+<input id="email" type="email" placeholder="Email address">
+<input id="password" type="password" placeholder="Password (minimum 8 characters)">
+<button onclick="register()">Sign Up</button>
+<button class="secondary" onclick="login()">Login</button>
 </div>
+
+<div id="chat" class="hidden">
+<div style="display:flex;justify-content:space-between;align-items:center">
+<strong>Aarohi ✨</strong>
+<button style="width:auto;margin:0" onclick="logout()">Logout</button>
+</div>
+<div id="messages">
+<div class="msg ai">हाय! मैं आरोही हूँ 😊 आज आप कैसे हैं?</div>
+</div>
+<input id="message" placeholder="मुझे कुछ लिखें..." onkeydown="if(event.key==='Enter')send()">
+<button onclick="send()">Send Message</button>
+</div>
+<div id="status"></div>
+</div>
+
 <script>
-function sendMessage(){
- const msg=document.getElementById("message").value.trim();
- if(!msg)return;
- document.getElementById("reply").innerText=
- "Your message: "+msg+" (AI connection coming soon!)";
- document.getElementById("message").value="";
+const $=id=>document.getElementById(id);
+function status(t){$('status').innerText=t}
+async function api(url,data){
+ const r=await fetch(url,{
+  method:'POST',
+  headers:{'Content-Type':'application/json'},
+  credentials:'same-origin',
+  body:JSON.stringify(data)
+ });
+ const d=await r.json();
+ if(!r.ok)throw Error(d.error||'Request failed');
+ return d;
+}
+async function register(){
+ try{
+ const email=$('email').value.trim();
+ const password=$('password').value;
+ await api('/api/register',{email,password});
+ await api('/api/login',{email,password});
+ openChat();
+ }catch(e){status(e.message)}
+}
+async function login(){
+ try{
+ await api('/api/login',{
+  email:$('email').value.trim(),
+  password:$('password').value
+ });
+ openChat();
+ }catch(e){status(e.message)}
+}
+function openChat(){
+ $('auth').classList.add('hidden');
+ $('chat').classList.remove('hidden');
+ status('Aarohi is ready ❤️');
+}
+async function send(){
+ const message=$('message').value.trim();
+ if(!message)return;
+ $('message').value='';
+ addMessage(message,'user');
+ status('Aarohi जवाब सोच रही है...');
+ try{
+ const d=await api('/api/chat',{
+  character_id:0,
+  message:message
+ });
+ addMessage(d.reply,'ai');
+ status('Online ❤️');
+ }catch(e){
+ status(e.message);
+ }
+}
+function addMessage(t,type){
+ const el=document.createElement('div');
+ el.className='msg '+type;
+ el.textContent=t;
+ $('messages').appendChild(el);
+ $('messages').scrollTop=$('messages').scrollHeight;
+}
+async function logout(){
+ try{await api('/api/logout',{})}catch(e){}
+ $('chat').classList.add('hidden');
+ $('auth').classList.remove('hidden');
+ status('Logged out');
 }
 </script>
 </body>
