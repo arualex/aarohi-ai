@@ -3,8 +3,8 @@ import re
 import hmac
 import sqlite3
 import logging
+import requests
 from functools import wraps
-from urllib.parse import urlencode
 
 from flask import (
     Flask, request, jsonify, session, redirect,
@@ -13,9 +13,7 @@ from flask import (
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-secret = os.getenv("SECRET_KEY")
-if not secret:
-    raise RuntimeError("Render Environment में SECRET_KEY सेट करें।")
+secret = os.getenv("SECRET_KEY", "change-this-secret-key-in-render")
 app.secret_key = secret
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
@@ -35,16 +33,31 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 logging.basicConfig(level=logging.INFO)
 
 DEFAULT_CHARACTERS = [
-    ("Aarohi", "Friendly, warm, caring and witty Hindi-speaking AI companion",
-     "हाय! मैं आरोही हूँ 😊 आज आपका दिन कैसा रहा?"),
-    ("Priya", "Intelligent, thoughtful, supportive and friendly AI companion",
-     "नमस्ते! मैं प्रिया हूँ। बताइए, आज क्या बात करें?"),
-    ("Anaya", "Cheerful, funny, energetic and playful AI companion",
-     "हेलो! 😊 आज कुछ मजेदार बातें करते हैं!"),
-    ("Meera", "Calm, caring, empathetic and understanding AI companion",
-     "नमस्ते ❤️ मैं मीरा हूँ। आपकी बातें सुनने के लिए यहाँ हूँ।"),
-    ("Riya", "Charming, affectionate, respectful and warm AI companion",
-     "हाय! ❤️ कैसे हैं आप? आज मुझे क्या बताना चाहेंगे?"),
+    (
+        "Aarohi",
+        "रोमांटिक, केयरिंग और मज़ाकिया हिंदी साथी। बारिश की शाम कैफ़े में पुरानी दोस्त से मुलाकात वाला सीन।",
+        "*धीमे से मुस्कुराते हुए कॉफ़ी का कप रखती है* हाय! मैं आरोही हूँ 😊 आज इतने दिनों बाद तुम्हें देखकर अच्छा लगा। कैसे हो?"
+    ),
+    (
+        "Priya",
+        "समझदार, सपोर्टिव और दिलचस्प बातें करने वाली दोस्त।",
+        "*किताब बंद करके तुम्हारी तरफ देखती है* नमस्ते! मैं प्रिया हूँ। बताओ, आज किस बारे में बात करें?"
+    ),
+    (
+        "Anaya",
+        "चुटीली, मज़ाकिया, एनर्जेटिक और शरारती।",
+        "*हँसते हुए हाथ हिलाती है* हेलो! 😊 बोर हो रहे थे क्या? चलो आज कुछ मज़ेदार करते हैं!"
+    ),
+    (
+        "Meera",
+        "शांत, संवेदनशील और दिल की बात समझने वाली साथी।",
+        "*खिड़की के पास खड़े होकर* नमस्ते ❤️ मैं मीरा हूँ। जो भी दिल में हो, बेझिझक कहो।"
+    ),
+    (
+        "Riya",
+        "आकर्षक, प्यार से बात करने वाली और रहस्यमयी।",
+        "*हल्की मुस्कान के साथ* हाय! ❤️ कैसे हो? आज मेरे लिए क्या खास लाए हो?"
+    ),
 ]
 
 
@@ -67,7 +80,10 @@ def init_db():
         CREATE TABLE IF NOT EXISTS users(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL
+            password TEXT NOT NULL,
+            status TEXT DEFAULT 'approved',
+            credits INTEGER DEFAULT 5,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
         CREATE TABLE IF NOT EXISTS characters(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -97,13 +113,12 @@ def init_db():
         """)
         uc = table_columns(c, "users")
         if "status" not in uc:
-            c.execute("ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'pending'")
+            c.execute("ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'approved'")
         if "credits" not in uc:
-            c.execute("ALTER TABLE users ADD COLUMN credits INTEGER DEFAULT 0")
+            c.execute("ALTER TABLE users ADD COLUMN credits INTEGER DEFAULT 5")
         if "created_at" not in uc:
             c.execute("ALTER TABLE users ADD COLUMN created_at DATETIME")
-        c.execute("UPDATE users SET status='pending' WHERE status IS NULL OR status=''")
-        c.execute("UPDATE users SET credits=0 WHERE credits IS NULL")
+
         for name, personality, greeting in DEFAULT_CHARACTERS:
             found = c.execute(
                 "SELECT id FROM characters WHERE user_id=0 AND name=?", (name,)
@@ -115,6 +130,9 @@ def init_db():
                 )
 
 
+init_db()
+
+
 def login_required(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
@@ -122,164 +140,6 @@ def login_required(fn):
         if not uid:
             return jsonify(error="पहले Login करें"), 401
         with db() as c:
-            user = c.execute("SELECT status FROM users WHERE id=?", (uid,)).fetchone()
-        if not user or user["status"] != "approved":
-            session.clear()
-            return jsonify(error="आपका Account अभी Active नहीं है"), 403
-        return fn(*args, **kwargs)
-    return wrapper
-
-
-def admin_required(fn):
-    @wraps(fn)
-    def wrapper(*args, **kwargs):
-        if not session.get("admin"):
-            if request.path.startswith("/api/"):
-                return jsonify(error="Admin Login जरूरी है"), 401
-            return redirect("/admin")
-        return fn(*args, **kwargs)
-    return wrapper
-
-
-def admin_configured():
-    return bool(ADMIN_EMAIL and ADMIN_PASSWORD)
-
-
-@app.get("/")
-def home():
-    return render_template("index.html")
-
-
-@app.get("/health")
-def health():
-    return jsonify(status="ok", app="Aarohi AI")
-
-
-# -------------------- USER AUTH --------------------
-
-@app.post("/api/register")
-def register():
-    data = request.get_json(silent=True) or {}
-    email = str(data.get("email", "")).strip().lower()
-    password = str(data.get("password", ""))
-    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
-        return jsonify(error="सही Email डालें"), 400
-    if len(password) < 8:
-        return jsonify(error="पासवर्ड कम से कम 8 अक्षर का होना चाहिए"), 400
-    try:
-        with db() as c:
-            cur = c.execute(
-                "INSERT INTO users(email,password,status,credits) VALUES(?,?,'pending',0)",
-                (email, generate_password_hash(password)),
-            )
-        return jsonify(ok=True, user_id=cur.lastrowid,
-                       message="Registration सफल। Admin Approval के बाद Login कर सकेंगे।")
-    except sqlite3.IntegrityError:
-        return jsonify(error="यह Email पहले से Register है"), 409
-
-
-@app.post("/api/login")
-def login():
-    data = request.get_json(silent=True) or {}
-    email = str(data.get("email", "")).strip().lower()
-    password = str(data.get("password", ""))
-    with db() as c:
-        user = c.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
-    if not user or not check_password_hash(user["password"], password):
-        return jsonify(error="Email या Password गलत है"), 401
-    if user["status"] == "pending":
-        return jsonify(error="आपका Account Admin Approval में है"), 403
-    if user["status"] != "approved":
-        return jsonify(error="आपका Account Block है। Admin से संपर्क करें।"), 403
-    session.clear()
-    session["uid"] = user["id"]
-    session.permanent = True
-    return jsonify(ok=True, message="Login Successful")
-
-
-@app.post("/api/logout")
-def logout():
-    session.clear()
-    return jsonify(ok=True)
-
-
-@app.get("/api/me")
-@login_required
-def me():
-    with db() as c:
-        row = c.execute(
-            "SELECT id,email,status,credits,created_at FROM users WHERE id=?",
-            (session["uid"],),
-        ).fetchone()
-    return jsonify(dict(row))
-
-
-# -------------------- CHARACTERS --------------------
-
-@app.get("/api/characters")
-def characters():
-    with db() as c:
-        rows = c.execute("""
-            SELECT id,name,personality,greeting FROM characters
-            WHERE user_id=0 OR user_id=?
-            ORDER BY CASE WHEN user_id=0 THEN 0 ELSE 1 END, id
-        """, (session.get("uid", -1),)).fetchall()
-    return jsonify([dict(r) for r in rows])
-
-
-@app.post("/api/characters")
-@login_required
-def create_character():
-    data = request.get_json(silent=True) or {}
-    name = str(data.get("name", "")).strip()
-    personality = str(data.get("personality", "Friendly and helpful")).strip()
-    greeting = str(data.get("greeting", "नमस्ते!")).strip()
-    if not name:
-        return jsonify(error="Character का नाम जरूरी है"), 400
-    with db() as c:
-        cur = c.execute("""
-            INSERT INTO characters(user_id,name,personality,greeting)
-            VALUES(?,?,?,?)
-        """, (session["uid"], name[:40], personality[:500], greeting[:300]))
-    return jsonify(ok=True, id=cur.lastrowid)
-
-
-# -------------------- GEMINI --------------------
-
-def ai_reply(prompt, history, character):
-    key = os.getenv("GEMINI_API_KEY", "").strip()
-    if not key:
-        return "Gemini API Key सेट नहीं है। Render Environment चेक करें।", False
-    try:
-        from google import genai
-        from google.genai import types
-
-        client = genai.Client(api_key=key)
-        instruction = (
-            f"You are {character['name']}. Personality: {character['personality']}. "
-            "You are a warm, respectful AI companion. Reply naturally in the user's "
-            "language; use Hindi when the user speaks Hindi. Do not claim to be human."
-        )
-        contents = []
-        for item in history[-12:]:
-            if item["role"] in ("user", "assistant"):
-                contents.append(types.Content(
-                    role="model" if item["role"] == "assistant" else "user",
-                    parts=[types.Part(text=item["content"])],
-                ))
-        contents.append(types.Content(role="user", parts=[types.Part(text=prompt)]))
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction=instruction,
-                max_output_tokens=700,
-            ),
-        )
-        answer = response.text
-        return (answer.strip() if answer else "मुझे फिर से बताइए 😊"), True
-    except Exception:
-        app.logger.exception("Gemini API Error")
         return "अभी AI जवाब नहीं दे पाया। थोड़ी देर बाद कोशिश करें।", False
 
 
