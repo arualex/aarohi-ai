@@ -261,12 +261,91 @@ def create_character():
     return jsonify(ok=True, id=cur.lastrowid)
 
 
-# -------------------- GEMINI REST API --------------------
+
+# -------------------- OPENROUTER REST API --------------------
 
 def ai_reply(prompt, history, character):
-    key = os.getenv("GEMINI_API_KEY", "").strip()
+    key = os.getenv("OPENROUTER_API_KEY", "").strip()
+    model = os.getenv("OPENROUTER_MODEL", "openrouter/free").strip()
+
     if not key:
-        return "Gemini API Key सेट नहीं है। Render Environment चेक करें।", False
+        return "OpenRouter API Key सेट नहीं है। Render Environment चेक करें।", False
+
+    instruction = (
+        f"तुम {character['name']} हो। तुम्हारा स्वभाव: {character['personality']}। "
+        "तुम एक काल्पनिक वयस्क AI साथी हो। "
+        "हमेशा प्राकृतिक हिंदी या Hinglish में बात करो। "
+        "यूज़र की भाषा और बातचीत के अंदाज के अनुसार जवाब दो। "
+        "रोमांटिक, केयरिंग, फ्लर्टी और दिलचस्प बातचीत करो। "
+        "सभी पात्र वयस्क और काल्पनिक हैं। "
+        "किसी भी अंतरंग बातचीत में सहमति और सम्मान जरूरी है। "
+        "हाव-भाव और एक्शन *स्टार* के बीच लिखो। "
+        "जवाब छोटे, स्वाभाविक और कहानी आगे बढ़ाने वाले रखो।"
+    )
+
+    messages = [{"role": "system", "content": instruction}]
+
+    for item in history[-12:]:
+        if item["role"] in ("user", "assistant"):
+            messages.append({
+                "role": item["role"],
+                "content": item["content"]
+            })
+
+    messages.append({
+        "role": "user",
+        "content": prompt
+    })
+
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": 0.9,
+        "max_tokens": 450
+    }
+
+    headers = {
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://aarohi-ai-1.onrender.com",
+        "X-Title": "Aarohi AI"
+    }
+
+    try:
+        resp = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=60
+        )
+
+        data = resp.json()
+
+        if resp.status_code != 200:
+            error = data.get("error", {}).get(
+                "message", f"HTTP {resp.status_code}"
+            )
+            app.logger.error("OpenRouter API Error: %s", error)
+            return f"AI Error: {error}", False
+
+        answer = data["choices"][0]["message"]["content"]
+
+        if isinstance(answer, list):
+            answer = "".join(
+                part.get("text", "")
+                for part in answer
+                if isinstance(part, dict)
+            )
+
+        if not answer or not answer.strip():
+            return "मुझे फिर से बताइए 😊", False
+
+        return answer.strip(), True
+
+    except Exception:
+        app.logger.exception("OpenRouter Request Failed")
+        return "अभी AI जवाब नहीं दे पाया। थोड़ी देर बाद कोशिश करें।", False
+        
 
     instruction = (
         f"तुम {character['name']} हो। तुम्हारा स्वभाव: {character['personality']}। "
